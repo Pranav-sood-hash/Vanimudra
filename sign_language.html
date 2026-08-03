@@ -1,0 +1,1989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Sign Language Practice System</title>
+
+<link rel="stylesheet" href="sl.css">
+
+<!-- Load libraries with specific versions -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+
+</head>
+
+<body>
+
+<!-- ============================================================
+     ANIMATED INTRO SCREEN
+     Sits over the entire app, animates, speaks, then exits.
+     ============================================================ -->
+<div id="introScreen">
+
+    <!-- Particle canvas -->
+    <canvas id="introCanvas"></canvas>
+
+    <!-- Floating hand signs in background -->
+    <div class="intro-signs-bg" aria-hidden="true">
+        <span class="bg-sign s1">🤟</span>
+        <span class="bg-sign s2">👋</span>
+        <span class="bg-sign s3">✌️</span>
+        <span class="bg-sign s4">🤙</span>
+        <span class="bg-sign s5">👌</span>
+        <span class="bg-sign s6">🤞</span>
+        <span class="bg-sign s7">🖐️</span>
+        <span class="bg-sign s8">🤟</span>
+    </div>
+
+    <!-- Centre content -->
+    <div class="intro-center">
+
+        <!-- Animated hand SVG -->
+        <div class="intro-hand-wrap">
+            <div class="intro-ring r1"></div>
+            <div class="intro-ring r2"></div>
+            <div class="intro-ring r3"></div>
+            <div class="intro-hand-icon">🤟</div>
+        </div>
+
+        <!-- Title -->
+        <div class="intro-title-wrap">
+            <div class="intro-tagline">Welcome to</div>
+            <div class="intro-title">
+                <span class="it-v">V</span><span class="it-a">A</span><span class="it-n">N</span><span class="it-i">I</span><span class="it-m">M</span><span class="it-u">U</span><span class="it-d">D</span><span class="it-r">R</span><span class="it-a2">A</span>
+            </div>
+            <div class="intro-sub">Sign Language Recognition System</div>
+        </div>
+
+        <!-- Typed speech line -->
+        <div class="intro-speech-wrap">
+            <span class="intro-speech-dot"></span>
+            <span id="introSpeechText" class="intro-speech-text"></span>
+            <span class="intro-cursor">|</span>
+        </div>
+
+        <!-- Enter button — appears after animation -->
+        <button id="introEnterBtn" class="intro-enter-btn" onclick="exitIntro()">
+            <span>Enter</span>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M4 9h10M10 5l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+
+    </div>
+
+    <!-- Bottom credit -->
+    <div class="intro-footer">Powered by MediaPipe · TensorFlow.js · Web Speech API</div>
+
+</div>
+
+<!-- Intro styles — scoped entirely inside #introScreen -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono&display=swap');
+
+#introScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: #020810;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: opacity 0.9s ease, transform 0.9s ease;
+}
+
+#introScreen.exit {
+    opacity: 0;
+    transform: scale(1.04);
+    pointer-events: none;
+}
+
+#introCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.55;
+}
+
+/* Floating bg signs */
+.intro-signs-bg { position: absolute; inset: 0; pointer-events: none; }
+.bg-sign {
+    position: absolute;
+    font-size: clamp(28px, 5vw, 56px);
+    opacity: 0;
+    animation: floatSign 8s ease-in-out infinite;
+    filter: blur(0.5px);
+}
+.s1 { top:8%;  left:6%;   animation-delay:0s;    animation-duration:9s; }
+.s2 { top:15%; right:8%;  animation-delay:1.2s;  animation-duration:11s; }
+.s3 { top:55%; left:3%;   animation-delay:2.1s;  animation-duration:8s; }
+.s4 { top:70%; right:5%;  animation-delay:0.6s;  animation-duration:10s; }
+.s5 { top:40%; left:88%;  animation-delay:3s;    animation-duration:9s; }
+.s6 { top:85%; left:20%;  animation-delay:1.8s;  animation-duration:12s; }
+.s7 { top:30%; left:92%;  animation-delay:4s;    animation-duration:7s; }
+.s8 { top:80%; right:25%; animation-delay:2.5s;  animation-duration:10s; }
+
+@keyframes floatSign {
+    0%   { opacity:0;    transform: translateY(20px) rotate(-8deg); }
+    20%  { opacity:0.18; }
+    50%  { opacity:0.12; transform: translateY(-12px) rotate(4deg); }
+    80%  { opacity:0.18; }
+    100% { opacity:0;    transform: translateY(20px) rotate(-8deg); }
+}
+
+/* Centre layout */
+.intro-center {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    z-index: 2;
+}
+
+/* Hand icon with rings */
+.intro-hand-wrap {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: handBounce 0.8s cubic-bezier(.36,.07,.19,.97) 0.3s both;
+}
+
+@keyframes handBounce {
+    0%   { opacity:0; transform: scale(0.3) rotate(-20deg); }
+    60%  { transform: scale(1.15) rotate(5deg); }
+    80%  { transform: scale(0.95) rotate(-2deg); }
+    100% { opacity:1; transform: scale(1) rotate(0deg); }
+}
+
+.intro-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1.5px solid;
+    animation: ringPulse 3s ease-out infinite;
+}
+.r1 { width:90px;  height:90px;  border-color:rgba(0,229,255,0.5);  animation-delay:0s; }
+.r2 { width:116px; height:116px; border-color:rgba(0,229,255,0.25); animation-delay:0.6s; }
+.r3 { width:144px; height:144px; border-color:rgba(0,229,255,0.12); animation-delay:1.2s; }
+
+@keyframes ringPulse {
+    0%   { transform:scale(0.85); opacity:0; }
+    40%  { opacity:1; }
+    100% { transform:scale(1.25); opacity:0; }
+}
+
+.intro-hand-icon {
+    font-size: 58px;
+    animation: handWave 1.5s ease-in-out 1.2s infinite alternate;
+    filter: drop-shadow(0 0 18px rgba(0,229,255,0.7));
+    line-height: 1;
+}
+
+@keyframes handWave {
+    0%   { transform: rotate(-10deg) scale(1); }
+    100% { transform: rotate(14deg)  scale(1.06); }
+}
+
+/* Title */
+.intro-title-wrap {
+    text-align: center;
+    animation: fadeUp 0.7s ease 0.9s both;
+}
+
+@keyframes fadeUp {
+    from { opacity:0; transform:translateY(24px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+
+.intro-tagline {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(0,229,255,0.55);
+    margin-bottom: 8px;
+}
+
+.intro-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(32px, 7vw, 62px);
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    line-height: 1;
+    background: linear-gradient(135deg, #00e5ff 0%, #b06eff 50%, #00e5ff 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 3s linear 1.5s infinite;
+    filter: drop-shadow(0 0 20px rgba(0,229,255,0.35));
+}
+
+@keyframes shimmer {
+    0%   { background-position: 0% center; }
+    100% { background-position: 200% center; }
+}
+
+/* Stagger each letter */
+.intro-title span {
+    display: inline-block;
+    animation: letterDrop 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+.it-v  { animation-delay: 1.0s; }
+.it-a  { animation-delay: 1.1s; }
+.it-n  { animation-delay: 1.2s; }
+.it-i  { animation-delay: 1.3s; }
+.it-m  { animation-delay: 1.4s; }
+.it-u  { animation-delay: 1.5s; }
+.it-d  { animation-delay: 1.6s; }
+.it-r  { animation-delay: 1.7s; }
+.it-a2 { animation-delay: 1.8s; }
+
+@keyframes letterDrop {
+    0%   { opacity:0; transform:translateY(-30px) scale(0.7); }
+    70%  { transform:translateY(4px) scale(1.05); }
+    100% { opacity:1; transform:translateY(0) scale(1); }
+}
+
+.intro-sub {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(9px, 1.5vw, 12px);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin-top: 10px;
+    animation: fadeUp 0.7s ease 2s both;
+}
+
+/* Speech line */
+.intro-speech-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0,229,255,0.05);
+    border: 1px solid rgba(0,229,255,0.15);
+    border-radius: 30px;
+    padding: 10px 20px;
+    min-width: 280px;
+    max-width: 480px;
+    animation: fadeUp 0.6s ease 2.4s both;
+}
+
+.intro-speech-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #00e5ff;
+    flex-shrink: 0;
+    animation: dotBlink 1.2s ease-in-out infinite;
+    box-shadow: 0 0 8px rgba(0,229,255,0.8);
+}
+
+@keyframes dotBlink {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:0.3; transform:scale(0.7); }
+}
+
+.intro-speech-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: rgba(255,255,255,0.75);
+    letter-spacing: 0.04em;
+    flex: 1;
+    min-height: 18px;
+}
+
+.intro-cursor {
+    color: #00e5ff;
+    font-weight: bold;
+    animation: cursorBlink 0.8s step-end infinite;
+    font-size: 16px;
+}
+
+@keyframes cursorBlink {
+    0%,100% { opacity:1; }
+    50%      { opacity:0; }
+}
+
+/* Enter button */
+.intro-enter-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 32px;
+    border: 1.5px solid rgba(0,229,255,0.5);
+    border-radius: 30px;
+    background: rgba(0,229,255,0.08);
+    color: #00e5ff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s ease, transform 0.5s ease,
+                background 0.2s, box-shadow 0.2s;
+    animation: none;
+}
+
+.intro-enter-btn.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.intro-enter-btn:hover {
+    background: rgba(0,229,255,0.18);
+    box-shadow: 0 0 24px rgba(0,229,255,0.35);
+}
+
+/* Footer */
+.intro-footer {
+    position: absolute;
+    bottom: 20px;
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: rgba(255,255,255,0.15);
+    text-transform: uppercase;
+    animation: fadeUp 0.5s ease 3s both;
+}
+</style>
+
+<script>
+// ============================================================
+//  INTRO SCREEN — particles + typewriter + TTS + exit
+// ============================================================
+
+(function() {
+
+    // ── Particle background ──
+    const c  = document.getElementById('introCanvas');
+    const cx = c.getContext('2d');
+    let W, H, particles = [];
+
+    function resizeCanvas() {
+        W = c.width  = window.innerWidth;
+        H = c.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    function makeParticle() {
+        return {
+            x: Math.random() * W,
+            y: Math.random() * H,
+            r: Math.random() * 1.4 + 0.4,
+            vx: (Math.random() - 0.5) * 0.35,
+            vy: (Math.random() - 0.5) * 0.35,
+            alpha: Math.random() * 0.6 + 0.1,
+            color: Math.random() > 0.5 ? '0,229,255' : '176,110,255'
+        };
+    }
+
+    for (let i = 0; i < 160; i++) particles.push(makeParticle());
+
+    function drawParticles() {
+        cx.clearRect(0, 0, W, H);
+        particles.forEach(p => {
+            p.x += p.vx; p.y += p.vy;
+            if (p.x < 0) p.x = W;
+            if (p.x > W) p.x = 0;
+            if (p.y < 0) p.y = H;
+            if (p.y > H) p.y = 0;
+
+            cx.beginPath();
+            cx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            cx.fillStyle = `rgba(${p.color},${p.alpha})`;
+            cx.fill();
+        });
+
+        // Draw lines between nearby particles
+        for (let i = 0; i < particles.length; i++) {
+            for (let j = i + 1; j < particles.length; j++) {
+                const dx = particles[i].x - particles[j].x;
+                const dy = particles[i].y - particles[j].y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < 90) {
+                    cx.beginPath();
+                    cx.moveTo(particles[i].x, particles[i].y);
+                    cx.lineTo(particles[j].x, particles[j].y);
+                    cx.strokeStyle = `rgba(0,229,255,${0.12 * (1 - dist/90)})`;
+                    cx.lineWidth = 0.6;
+                    cx.stroke();
+                }
+            }
+        }
+
+        if (document.getElementById('introScreen')) {
+            requestAnimationFrame(drawParticles);
+        }
+    }
+    drawParticles();
+
+    // ── Typewriter ──
+    const messages = [
+        "Namaste! I am VANIMUDRA.",
+        "I can read your hand signs in real time.",
+        "Show me a sign and I will speak it for you.",
+        "Let us bridge the world through hands."
+    ];
+
+    const speechEl = document.getElementById('introSpeechText');
+    let msgIdx = 0, charIdx = 0, typing = true;
+    let spokenOnce = false; // ensure voice fires exactly once
+
+    function typeNext() {
+        if (!speechEl) return;
+        const msg = messages[msgIdx];
+
+        if (typing) {
+            if (charIdx <= msg.length) {
+                speechEl.textContent = msg.slice(0, charIdx++);
+                setTimeout(typeNext, 42);
+            } else {
+                // Speak ONLY the first message, ONLY once
+                if (msgIdx === 0 && !spokenOnce) {
+                    speakIntro(msg);
+                    spokenOnce = true;
+                }
+                // Show enter button as soon as first message finishes
+                if (msgIdx === 0) showEnterBtn();
+
+                typing = false;
+                setTimeout(typeNext, 2200);
+            }
+        } else {
+            // Erase
+            if (charIdx > 0) {
+                speechEl.textContent = msg.slice(0, --charIdx);
+                setTimeout(typeNext, 22);
+            } else {
+                msgIdx++;
+                // Stop after all 4 messages — no loop back
+                if (msgIdx >= messages.length) {
+                    speechEl.textContent = "";
+                    return;
+                }
+                typing = true;
+                setTimeout(typeNext, 300);
+            }
+        }
+    }
+
+    // Start typewriter after letters animate in
+    setTimeout(typeNext, 2600);
+
+    // ── Text-to-Speech ──
+    function speakIntro(text) {
+        if (!('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang   = 'en-IN';   // Indian English accent
+        u.rate   = 0.92;
+        u.pitch  = 1.05;
+        u.volume = 1;
+
+        // Pick a female voice if available
+        const voices = window.speechSynthesis.getVoices();
+        const female = voices.find(v =>
+            v.lang.startsWith('en') &&
+            /female|woman|zira|samantha|victoria|susan|karen|moira/i.test(v.name)
+        );
+        if (female) u.voice = female;
+
+        window.speechSynthesis.speak(u);
+    }
+
+    // Voices load async in some browsers
+    window.speechSynthesis.onvoiceschanged = () => {};
+
+    // ── Show Enter button ──
+    function showEnterBtn() {
+        const btn = document.getElementById('introEnterBtn');
+        if (btn) btn.classList.add('visible');
+    }
+
+    // Show enter button after 7s regardless
+    setTimeout(showEnterBtn, 7000);
+
+})();
+
+// ── Exit intro ──
+function exitIntro() {
+    window.speechSynthesis && window.speechSynthesis.cancel();
+    const screen = document.getElementById('introScreen');
+    if (!screen) return;
+    screen.classList.add('exit');
+    setTimeout(() => {
+        screen.style.display = 'none';
+    }, 950);
+}
+</script>
+
+<header>
+    <img src="static/logo.png" class="logo" onerror="this.style.display='none'">
+    <h1>VANIMUDRA</h1>
+</header>
+
+<div class="container">
+
+    <div class="left-panel">
+        <div class="card">
+            <h2>User Camera</h2>
+            <button id="switchCamera" class="switch-btn" onclick="switchCamera()">
+                Switch Camera
+            </button>
+            <div class="camera-container">
+                <video id="camera" autoplay playsinline muted crossorigin="anonymous"></video>
+                <canvas id="output_canvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="right-panel">
+
+        <!-- SIGN PREVIEW CARD -->
+        <div class="card sign-preview-card">
+            <div class="sign-preview-header">
+                <span class="sign-preview-title">&#x1F91F; Sign Preview</span>
+                <span id="signLabel" class="sign-label">—</span>
+            </div>
+            <div class="sign-preview-frame" id="signPreviewFrame">
+                <!-- Placeholder shown when no sign detected -->
+                <div class="sign-placeholder-box" id="signPlaceholder">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <path d="M24 4C13 4 4 13 4 24s9 20 20 20 20-9 20-20S35 4 24 4z" stroke="rgba(255,255,255,0.1)" stroke-width="2" fill="none"/>
+                        <path d="M16 20c0-4.4 3.6-8 8-8s8 3.6 8 8v8H16v-8z" stroke="rgba(0,229,255,0.3)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+                        <path d="M20 28v4M28 28v4" stroke="rgba(0,229,255,0.3)" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    <span>Show a sign</span>
+                </div>
+                <!-- Actual sign image -->
+                <img id="signPreview"
+                     src=""
+                     alt=""
+                     style="display:none"
+                     onerror="handlePreviewError(this)">
+            </div>
+        </div>
+        <div class="card output">
+            <div class="output-header">
+                <h2>Recognized Text Output</h2>
+                <button class="clear-btn" onclick="clearOutput()">Clear</button>
+            </div>
+            <div class="text-box" id="outputText">Initializing...</div>
+        </div>
+
+        <div class="card terminal-card">
+            <div class="terminal-header">
+                <div class="terminal-dots">
+                    <span class="dot dot-red"></span>
+                    <span class="dot dot-yellow"></span>
+                    <span class="dot dot-green"></span>
+                </div>
+                <span class="terminal-title">System Log</span>
+                <button class="terminal-clear-btn" onclick="clearDebug()">Clear</button>
+            </div>
+            <div id="debugPanel" class="debug-info">Loading...</div>
+        </div>
+
+        <!-- LIVE PROBABILITY PREVIEW -->
+        <div class="card prob-card">
+            <div class="prob-header">
+                <span class="prob-title">&#x1F4CA; Live Sign Confidence</span>
+                <span id="probStatus" class="prob-status">Waiting...</span>
+            </div>
+            <!-- Dwell progress bar — fills up as sign is held -->
+            <div class="dwell-track">
+                <div id="dwellBar" class="dwell-fill"></div>
+                <span id="dwellLabel" class="dwell-label"></span>
+            </div>
+            <div id="probBars" class="prob-bars">
+                <div class="prob-placeholder">Model not loaded yet</div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+const debugPanel = document.getElementById('debugPanel');
+const output = document.getElementById("outputText");
+const video = document.getElementById("camera");
+const canvas = document.getElementById("output_canvas");
+const ctx = canvas.getContext("2d");
+
+function log(msg, type='info') {
+    console.log(msg);
+    const color = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : '';
+    debugPanel.innerHTML += `<div class="${color}">${new Date().toLocaleTimeString()}: ${msg}</div>`;
+    // Cap at 60 lines to prevent DOM bloat and lag
+    while (debugPanel.children.length > 60) {
+        debugPanel.removeChild(debugPanel.firstChild);
+    }
+    debugPanel.scrollTop = debugPanel.scrollHeight;
+}
+
+let holistic, model = null, isProcessing = false;
+let currentStream = null, useFrontCamera = true;
+let motionHistory = [], predictionBuffer = [];
+let lastGesture = "", gestureLocked = false, resetCounter = 0, isMoving = false;
+let handAbsent = false; // tracks whether hand is currently out of frame
+
+// ================= SENTENCE BUILDING =================
+let sentence = "";
+const MAX_WORDS = 15; // Limit to prevent overflow
+
+// ================= TEXT TO SPEECH SYSTEM =================
+
+let lastSpokenText = "";
+
+function speakText(text) {
+    if (!text || text === lastSpokenText) return;
+    
+    if (!('speechSynthesis' in window)) {
+        log("TTS not supported in this browser", "warning");
+        return;
+    }
+    
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    
+    utterance.onstart = () => {
+        log(`Speaking: "${text}"`, "success");
+    };
+    
+    utterance.onerror = (event) => {
+        if (event.error !== 'canceled') {
+            log(`TTS error: ${event.error}`, "error");
+        }
+    };
+    
+    window.speechSynthesis.speak(utterance);
+    lastSpokenText = text;
+}
+
+// ================= STATIC vs DYNAMIC SYSTEM =================
+
+const DYNAMIC_BUFFER_SIZE = 12;
+let frameBuffer = [];
+let isDynamicMode = false;
+let dynamicProcessing = false;
+let lastMotionTime = Date.now();
+const STATIC_DELAY = 500;
+
+let croppedCanvas = null;
+let croppedCtx = null;
+
+// ================= DUAL HAND-TRACKING BOXES =================
+
+let rightHandBox = null;
+let leftHandBox = null;
+let rightTargetBox = null;
+let leftTargetBox = null;
+const SMOOTHING_FACTOR = 0.7;
+const BOX_PADDING = 0.15;
+let useFullFrame = false;
+
+// ---- Smoothed pose landmarks for lag-free elbow/wrist rendering ----
+let smoothedPose = null;
+const POSE_SMOOTH = 0.65; // higher = more responsive (less lag)
+
+function smoothPoseLandmarks(raw) {
+    if (!raw) { smoothedPose = null; return null; }
+    if (!smoothedPose || smoothedPose.length !== raw.length) {
+        smoothedPose = raw.map(lm => ({ x: lm.x, y: lm.y, z: lm.z || 0, visibility: lm.visibility || 0 }));
+        return smoothedPose;
+    }
+    raw.forEach((lm, i) => {
+        smoothedPose[i].x += (lm.x - smoothedPose[i].x) * POSE_SMOOTH;
+        smoothedPose[i].y += (lm.y - smoothedPose[i].y) * POSE_SMOOTH;
+        smoothedPose[i].z += ((lm.z || 0) - smoothedPose[i].z) * POSE_SMOOTH;
+        smoothedPose[i].visibility = lm.visibility || 0;
+    });
+    return smoothedPose;
+}
+
+// ---- Smoothed face landmarks for lag-free face mesh rendering ----
+let smoothedFace = null;
+const FACE_SMOOTH = 0.60; // balanced: responsive yet jitter-free
+
+function smoothFaceLandmarks(raw) {
+    if (!raw) { smoothedFace = null; return null; }
+    if (!smoothedFace || smoothedFace.length !== raw.length) {
+        smoothedFace = raw.map(lm => ({ x: lm.x, y: lm.y, z: lm.z || 0 }));
+        return smoothedFace;
+    }
+    raw.forEach((lm, i) => {
+        smoothedFace[i].x += (lm.x - smoothedFace[i].x) * FACE_SMOOTH;
+        smoothedFace[i].y += (lm.y - smoothedFace[i].y) * FACE_SMOOTH;
+        smoothedFace[i].z += ((lm.z || 0) - smoothedFace[i].z) * FACE_SMOOTH;
+    });
+    return smoothedFace;
+}
+
+/**
+ * Get bounding box from hand landmarks
+ */
+function getHandBoundingBox(landmarks) {
+    if (!landmarks || landmarks.length === 0) return null;
+    
+    let minX = 1, minY = 1, maxX = 0, maxY = 0;
+    
+    landmarks.forEach(lm => {
+        if (lm.x < minX) minX = lm.x;
+        if (lm.x > maxX) maxX = lm.x;
+        if (lm.y < minY) minY = lm.y;
+        if (lm.y > maxY) maxY = lm.y;
+    });
+    
+    const width = (maxX - minX) * (1 + 2 * BOX_PADDING);
+    const height = (maxY - minY) * (1 + 2 * BOX_PADDING);
+    const x = Math.max(0, minX - (maxX - minX) * BOX_PADDING);
+    const y = Math.max(0, minY - (maxY - minY) * BOX_PADDING);
+    
+    return {
+        x: Math.min(x, 1),
+        y: Math.min(y, 1),
+        width: Math.min(width, 1 - x),
+        height: Math.min(height, 1 - y)
+    };
+}
+
+/**
+ * Smooth bounding box using exponential moving average
+ */
+function smoothBoundingBox(newBox, currentBoxRef) {
+    if (!newBox) return currentBoxRef;
+    
+    if (!currentBoxRef) {
+        return { ...newBox };
+    }
+    
+    currentBoxRef.x += (newBox.x - currentBoxRef.x) * SMOOTHING_FACTOR;
+    currentBoxRef.y += (newBox.y - currentBoxRef.y) * SMOOTHING_FACTOR;
+    currentBoxRef.width += (newBox.width - currentBoxRef.width) * SMOOTHING_FACTOR;
+    currentBoxRef.height += (newBox.height - currentBoxRef.height) * SMOOTHING_FACTOR;
+    
+    return currentBoxRef;
+}
+
+/**
+ * Draw hand bounding box with label
+ */
+function drawHandBox(box, handLabel) {
+    if (!box) return;
+    
+    const w = canvas.width;
+    const h = canvas.height;
+    
+    const x = box.x * w;
+    const y = box.y * h;
+    const boxW = box.width * w;
+    const boxH = box.height * h;
+    
+    ctx.save();
+    
+    // Different colors for each hand
+    const color = handLabel === 'right' ? "rgba(0, 255, 255, 0.8)" : "rgba(255, 165, 0, 0.8)";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([]);
+    ctx.strokeRect(x, y, boxW, boxH);
+    
+    // Corner markers
+    const cornerSize = 15;
+    ctx.fillStyle = color;
+    
+    ctx.fillRect(x, y, cornerSize, 3);
+    ctx.fillRect(x, y, 3, cornerSize);
+    
+    ctx.fillRect(x + boxW - cornerSize, y, cornerSize, 3);
+    ctx.fillRect(x + boxW - 3, y, 3, cornerSize);
+    
+    ctx.fillRect(x, y + boxH - 3, cornerSize, 3);
+    ctx.fillRect(x, y + boxH - cornerSize, 3, cornerSize);
+    
+    ctx.fillRect(x + boxW - cornerSize, y + boxH - 3, cornerSize, 3);
+    ctx.fillRect(x + boxW - 3, y + boxH - cornerSize, 3, cornerSize);
+    
+    // Hand label
+    ctx.font = "bold 12px monospace";
+    ctx.fillText(handLabel.toUpperCase(), x + 5, y - 8);
+    
+    ctx.restore();
+}
+
+/**
+ * Process both hands and return active boxes
+ */
+function processBothHands(results) {
+    const boxes = [];
+    
+    // Process right hand
+    if (results.rightHandLandmarks) {
+        rightTargetBox = getHandBoundingBox(results.rightHandLandmarks);
+        rightHandBox = smoothBoundingBox(rightTargetBox, rightHandBox);
+        if (rightHandBox) {
+            boxes.push({ box: rightHandBox, hand: 'right' });
+            drawHandBox(rightHandBox, 'right');
+        }
+    } else {
+        rightHandBox = null;
+        rightTargetBox = null;
+    }
+    
+    // Process left hand
+    if (results.leftHandLandmarks) {
+        leftTargetBox = getHandBoundingBox(results.leftHandLandmarks);
+        leftHandBox = smoothBoundingBox(leftTargetBox, leftHandBox);
+        if (leftHandBox) {
+            boxes.push({ box: leftHandBox, hand: 'left' });
+            drawHandBox(leftHandBox, 'left');
+        }
+    } else {
+        leftHandBox = null;
+        leftTargetBox = null;
+    }
+    
+    return boxes;
+}
+
+/**
+ * Get cropped hand image for prediction — HAND ONLY.
+ * Always crops a square region around the hand bounding box.
+ * Returns null if no valid hand box exists — never falls back to full frame.
+ */
+function getHandCrop(handBox) {
+    if (!handBox) return null;
+
+    if (!croppedCanvas) {
+        croppedCanvas = document.createElement('canvas');
+        croppedCanvas.width = 224;
+        croppedCanvas.height = 224;
+        croppedCtx = croppedCanvas.getContext('2d');
+    }
+
+    const videoWidth  = video.videoWidth  || 640;
+    const videoHeight = video.videoHeight || 480;
+
+    // Convert normalised box to pixels
+    let sx = handBox.x      * videoWidth;
+    let sy = handBox.y      * videoHeight;
+    let sw = handBox.width  * videoWidth;
+    let sh = handBox.height * videoHeight;
+
+    // Enforce square crop — use the larger dimension so hand is never clipped
+    const side = Math.max(sw, sh);
+    // Re-centre the square on the original box centre
+    sx = sx + sw / 2 - side / 2;
+    sy = sy + sh / 2 - side / 2;
+    sw = side;
+    sh = side;
+
+    // Clamp to video bounds
+    sx = Math.max(0, Math.min(sx, videoWidth  - 1));
+    sy = Math.max(0, Math.min(sy, videoHeight - 1));
+    sw = Math.min(sw, videoWidth  - sx);
+    sh = Math.min(sh, videoHeight - sy);
+
+    // Reject if crop is too small — no usable hand region
+    if (sw < 40 || sh < 40) return null;
+
+    croppedCtx.clearRect(0, 0, 224, 224);
+    croppedCtx.drawImage(video, sx, sy, sw, sh, 0, 0, 224, 224);
+
+    return croppedCanvas;
+}
+
+// ================= STATIC vs DYNAMIC LOGIC =================
+
+function updateMotionState(isCurrentlyMoving) {
+    const now = Date.now();
+    
+    if (isCurrentlyMoving) {
+        lastMotionTime = now;
+        if (!isDynamicMode) {
+            isDynamicMode = true;
+            log("Dynamic mode ON");
+        }
+        return true;
+    }
+    
+    const timeSinceMotion = now - lastMotionTime;
+    
+    if (isDynamicMode && timeSinceMotion > STATIC_DELAY) {
+        isDynamicMode = false;
+        log("Static mode ON - processing dynamic buffer");
+        processDynamicGesture();
+        return false;
+    }
+    
+    return isDynamicMode;
+}
+
+function bufferFrame() {
+    if (frameBuffer.length >= DYNAMIC_BUFFER_SIZE) {
+        frameBuffer.shift();
+    }
+    frameBuffer.push(Date.now());
+}
+
+async function processDynamicGesture() {
+    if (dynamicProcessing || frameBuffer.length < 3) {
+        frameBuffer = [];
+        return;
+    }
+    
+    dynamicProcessing = true;
+    log(`Processing ${frameBuffer.length} buffered frames...`);
+    
+    try {
+        const predictions = [];
+        
+        for (let i = 0; i < frameBuffer.length; i++) {
+            tf.engine().startScope();
+            
+            // Use right hand for dynamic, fallback to left, then full frame
+            let inputImage = getHandCrop(rightHandBox) || getHandCrop(leftHandBox) || video;
+            
+            const pred = await model.predict(inputImage);
+            tf.engine().endScope();
+            
+            let best = pred[0];
+            pred.forEach(p => { 
+                if (p.probability > best.probability) best = p; 
+            });
+            
+            if (best.probability > 0.6) {
+                predictions.push(best.className);
+            }
+        }
+        
+        if (predictions.length === 0) {
+            log("Dynamic: No confident predictions", "warning");
+            dynamicProcessing = false;
+            frameBuffer = [];
+            return;
+        }
+        
+        const voteCount = {};
+        predictions.forEach(p => {
+            voteCount[p] = (voteCount[p] || 0) + 1;
+        });
+        
+        let winner = predictions[0];
+        let maxVotes = 0;
+        for (const [gesture, count] of Object.entries(voteCount)) {
+            if (count > maxVotes) {
+                maxVotes = count;
+                winner = gesture;
+            }
+        }
+        
+        const confidence = (maxVotes / predictions.length * 100).toFixed(1);
+        log(`[DYNAMIC] ${winner} (${confidence}%)`, "success");
+        
+        // ===== SENTENCE BUILDING FOR DYNAMIC =====
+        sentence += winner + " ";
+        
+        // Limit sentence length
+        const words = sentence.trim().split(/\s+/);
+        if (words.length > MAX_WORDS) {
+            sentence = words.slice(-MAX_WORDS).join(" ") + " ";
+        }
+        
+        output.innerText = sentence.trim();
+        speakText(winner);
+        updatePreviewImage(winner);
+        
+        lastGesture = winner;
+        gestureLocked = true;
+        resetCounter = 0;
+        
+    } catch (e) {
+        log("Dynamic error: " + e.message, "error");
+    }
+    
+    frameBuffer = [];
+    dynamicProcessing = false;
+    
+    setTimeout(() => {
+        gestureLocked = false;
+        resetCounter = 0;
+    }, 300);
+}
+
+// ================= SIGN PREVIEW =================
+
+// Extensions to try in order — covers both png and jpg
+const PREVIEW_EXTS = ['png', 'jpg', 'jpeg', 'PNG', 'JPG'];
+
+// Cache: className → resolved path (or null if none found)
+const previewCache = {};
+
+/**
+ * Try loading image paths in sequence until one works.
+ * Calls onFound(path) on first success, onFail() if all fail.
+ */
+function tryLoadImage(paths, idx, onFound, onFail) {
+    if (idx >= paths.length) { onFail(); return; }
+    const img = new Image();
+    img.onload  = () => onFound(paths[idx]);
+    img.onerror = () => tryLoadImage(paths, idx + 1, onFound, onFail);
+    img.src = paths[idx];
+}
+
+/**
+ * Update the sign preview card with the image for the recognised gesture.
+ * Auto-discovers images/CLASSNAME.{png,jpg,jpeg} without a hardcoded map.
+ */
+function updatePreviewImage(gesture) {
+    if (!gesture) return;
+
+    const previewImg   = document.getElementById('signPreview');
+    const placeholder  = document.getElementById('signPlaceholder');
+    const labelEl      = document.getElementById('signLabel');
+    const frameEl      = document.getElementById('signPreviewFrame');
+    if (!previewImg) return;
+
+    // Update label immediately
+    if (labelEl) {
+        labelEl.textContent = gesture;
+        labelEl.style.color = 'var(--cyan)';
+    }
+
+    // Already resolved this class before
+    if (previewCache[gesture] !== undefined) {
+        if (previewCache[gesture]) {
+            showPreviewImage(previewImg, placeholder, frameEl, previewCache[gesture], gesture);
+        } else {
+            showPreviewMissing(previewImg, placeholder, frameEl, gesture);
+        }
+        return;
+    }
+
+    // Build candidate paths — try both lowercase and as-typed
+    const name = gesture.toLowerCase();
+    const candidates = [];
+    PREVIEW_EXTS.forEach(ext => {
+        candidates.push(`images/${gesture}.${ext}`);
+        candidates.push(`images/${name}.${ext}`);
+    });
+
+    tryLoadImage(candidates, 0,
+        (resolvedPath) => {
+            previewCache[gesture] = resolvedPath;
+            showPreviewImage(previewImg, placeholder, frameEl, resolvedPath, gesture);
+            log(`Preview: ${gesture} → ${resolvedPath}`);
+        },
+        () => {
+            previewCache[gesture] = null;
+            showPreviewMissing(previewImg, placeholder, frameEl, gesture);
+            log(`No preview image found for: ${gesture}`, 'warning');
+        }
+    );
+}
+
+function showPreviewImage(imgEl, placeholder, frame, src, gesture) {
+    // Pre-load into a temp image first — only swap when confirmed loaded
+    const temp = new Image();
+    temp.onload = () => {
+        imgEl.style.transition = 'none';
+        imgEl.style.opacity    = '0';
+        imgEl.style.transform  = 'scale(0.92)';
+        imgEl.src              = src;
+        imgEl.alt              = gesture;
+        imgEl.style.display    = 'block';
+        if (placeholder) placeholder.style.display = 'none';
+
+        // Force reflow then animate in
+        imgEl.getBoundingClientRect();
+        imgEl.style.transition = 'opacity 0.2s ease, transform 0.22s ease';
+        imgEl.style.opacity    = '1';
+        imgEl.style.transform  = 'scale(1)';
+    };
+    temp.onerror = () => {
+        showPreviewMissing(imgEl, placeholder, frame, gesture);
+    };
+    temp.src = src;
+}
+
+function showPreviewMissing(imgEl, placeholder, frame, gesture) {
+    imgEl.style.display = 'none';
+    if (placeholder) {
+        placeholder.style.display  = 'flex';
+        const span = placeholder.querySelector('span');
+        if (span) span.textContent = `No image for "${gesture}"`;
+    }
+}
+
+// Called by onerror on the img tag itself
+function handlePreviewError(imgEl) {
+    imgEl.style.display = 'none';
+    const placeholder = document.getElementById('signPlaceholder');
+    if (placeholder) placeholder.style.display = 'flex';
+}
+
+// ================= TF INIT =================
+
+async function initTF() {
+    log("Initializing TensorFlow...");
+    try {
+        await tf.setBackend('webgl');
+        log("✓ WebGL backend active", "success");
+    } catch(e) {
+        log("WebGL failed: " + e.message, "warning");
+        try {
+            await tf.setBackend('cpu');
+            log("✓ CPU backend active", "success");
+        } catch(e2) {
+            throw new Error("No TF backend available");
+        }
+    }
+}
+
+// ================= CAMERA =================
+
+async function startCamera(){
+    log("Starting camera...");
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+    }
+
+    const constraints = {
+        video: { width: 640, height: 480, facingMode: useFrontCamera ? "user" : "environment" },
+        audio: false 
+    };
+
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    currentStream = stream;
+    video.srcObject = stream;
+
+    return new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => {
+            video.play();
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            log(`✓ Camera: ${canvas.width}x${canvas.height}`, "success");
+            resolve();
+        };
+        video.onerror = reject;
+    });
+}
+
+function switchCamera() {
+    useFrontCamera = !useFrontCamera;
+    startCamera().catch(e => log("Camera error: " + e.message, "error"));
+}
+
+// ================= MODEL LOADING =================
+
+async function loadModel(){
+    try {
+        log("Loading model...");
+
+        model = await tmImage.load(
+            "./model/model.json",
+            "./model/metadata.json"
+        );
+
+        log("✓ Model loaded successfully!", "success");
+        output.innerText = "Ready! Show hand sign";
+
+        return true;
+
+    } catch(e) {
+        log("✗ Model failed: " + e.message, "error");
+        output.innerText = "Model not found";
+        model = null;
+        return false;
+    }
+}
+
+// ================= MOTION =================
+
+function detectMotion(wrist){
+    if (!wrist) return false;
+    motionHistory.push({ x: wrist.x, y: wrist.y });
+    if (motionHistory.length > 6) motionHistory.shift();
+    if (motionHistory.length < 6) return false;
+    const first = motionHistory[0], last = motionHistory[5];
+    const moving = (Math.abs(last.x - first.x) + Math.abs(last.y - first.y)) > 0.03;
+    
+    const inDynamicMode = updateMotionState(moving);
+    
+    if (inDynamicMode && !dynamicProcessing) {
+        bufferFrame();
+    }
+    
+    return moving;
+}
+
+function getStableGesture(gesture){
+    predictionBuffer.push(gesture);
+    if (predictionBuffer.length > 5) predictionBuffer.shift();
+    const count = {};
+    predictionBuffer.forEach(g => count[g] = (count[g] || 0) + 1);
+    let stable = gesture, max = 0;
+    for (let k in count) if (count[k] > max) { max = count[k]; stable = k; }
+    return stable;
+}
+
+// ================= PROBABILITY-BASED SMOOTHING =================
+// Rolling window of full probability arrays for stable, flicker-free prediction
+
+const PROB_WINDOW_SIZE = 12;       // frames to average over
+const PROB_CONFIDENCE_THRESHOLD = 0.70; // minimum averaged confidence to emit
+const PROB_CONSISTENCY_FRAMES = 4; // how many consecutive frames same winner needed
+
+let probWindow = [];               // rolling array of {className, probability}[] arrays
+let probConsistencyCount = 0;      // consecutive frames current winner has held
+let probLastWinner = "";           // winner from previous frame evaluation
+
+/**
+ * Push a full prediction array into the rolling window and return
+ * { className, avgProb } for the current winner, or null if not confident.
+ */
+function getProbabilitySmoothedGesture(predArray) {
+    // Store snapshot: array of { className, probability }
+    probWindow.push(predArray.map(p => ({ className: p.className, probability: p.probability })));
+    if (probWindow.length > PROB_WINDOW_SIZE) probWindow.shift();
+
+    // Accumulate average probability per class across the window
+    const classNames = predArray.map(p => p.className);
+    const sums = {};
+    classNames.forEach(cn => sums[cn] = 0);
+
+    probWindow.forEach(frame => {
+        frame.forEach(p => {
+            if (sums[p.className] !== undefined) sums[p.className] += p.probability;
+        });
+    });
+
+    // Compute averages
+    let winner = null, topAvg = 0;
+    classNames.forEach(cn => {
+        const avg = sums[cn] / probWindow.length;
+        if (avg > topAvg) { topAvg = avg; winner = cn; }
+    });
+
+    if (!winner || topAvg < PROB_CONFIDENCE_THRESHOLD) {
+        probConsistencyCount = 0;
+        return null;
+    }
+
+    // Require winner to hold for PROB_CONSISTENCY_FRAMES consecutive evaluations
+    if (winner === probLastWinner) {
+        probConsistencyCount++;
+    } else {
+        probLastWinner = winner;
+        probConsistencyCount = 1;
+    }
+
+    if (probConsistencyCount < PROB_CONSISTENCY_FRAMES) return null;
+
+    return { className: winner, avgProb: topAvg };
+}
+
+/** Reset probability window state (called from clearOutput) */
+function resetProbWindow() {
+    probWindow = [];
+    probConsistencyCount = 0;
+    probLastWinner = "";
+}
+
+// ================= ADAPTIVE DWELL + TOLERANCE SYSTEM =================
+// - Adaptive timing: fires faster when confidence is very high
+// - Tolerance window: brief dips in top class don't reset the full timer
+// - Relative dominance: top class must meaningfully lead the second class
+
+const STILLNESS_THRESHOLD = 0.018;
+const STILLNESS_FRAMES    = 4;
+
+let prevHandLandmarks = null;
+let stillFrameCount   = 0;
+let isHandStill       = false;
+
+// Adaptive dwell thresholds
+function getAdaptiveDwellMs(probability) {
+    if (probability >= 0.90) return 500;   // very confident  → 0.5s
+    if (probability >= 0.70) return 800;   // confident       → 0.8s
+    return 1200;                           // borderline      → 1.2s
+}
+
+// Relative dominance: top must be ≥1.8x the second class
+function isDominant(sorted) {
+    if (sorted.length < 2) return true;
+    return sorted[0].probability >= sorted[1].probability * 1.8;
+}
+
+let dwellClass       = "";
+let dwellStartTime   = 0;
+let dwellFired       = false;
+let dwellTargetMs    = 1000;
+
+// Tolerance: allow up to 200ms of a different class without resetting
+let toleranceClass   = "";
+let toleranceStart   = 0;
+const TOLERANCE_MS   = 200;
+
+/**
+ * Adaptive dwell with tolerance.
+ * Returns { ready, progress } where progress is 0–1 for the visual bar.
+ */
+function checkAdaptiveDwell(topClass, topProb, sorted) {
+    const now = Date.now();
+
+    // If not dominant enough, pause but don't reset
+    if (!isDominant(sorted) || topProb < 0.45) {
+        return { ready: false, progress: dwellStartTime
+            ? Math.min((now - dwellStartTime) / dwellTargetMs, 1)
+            : 0 };
+    }
+
+    if (topClass !== dwellClass) {
+        // Different class — check tolerance window
+        if (toleranceClass !== topClass) {
+            toleranceClass = topClass;
+            toleranceStart = now;
+        }
+
+        // Only switch if tolerance window exceeded
+        if (now - toleranceStart < TOLERANCE_MS) {
+            // Within tolerance — hold current dwell, don't reset
+            const elapsed = dwellStartTime ? now - dwellStartTime : 0;
+            return { ready: false, progress: Math.min(elapsed / dwellTargetMs, 1) };
+        }
+
+        // Tolerance exceeded — new class takes over, restart dwell
+        dwellClass     = topClass;
+        dwellStartTime = now;
+        dwellTargetMs  = getAdaptiveDwellMs(topProb);
+        dwellFired     = false;
+        toleranceClass = topClass;
+        return { ready: false, progress: 0 };
+    }
+
+    // Same class as current dwell
+    toleranceClass = topClass; // reset tolerance tracking
+    if (!dwellStartTime) dwellStartTime = now;
+
+    // Update adaptive target as confidence evolves
+    dwellTargetMs = getAdaptiveDwellMs(topProb);
+
+    if (dwellFired) {
+        return { ready: false, progress: 1 };
+    }
+
+    const elapsed  = now - dwellStartTime;
+    const progress = Math.min(elapsed / dwellTargetMs, 1);
+
+    if (elapsed >= dwellTargetMs) {
+        dwellFired = true;
+        return { ready: true, progress: 1 };
+    }
+
+    return { ready: false, progress };
+}
+
+function resetDwell() {
+    dwellClass     = "";
+    dwellStartTime = 0;
+    dwellFired     = false;
+    dwellTargetMs  = 1000;
+    toleranceClass = "";
+    toleranceStart = 0;
+}
+
+/**
+ * Update dwell progress bar and label in the UI
+ */
+function updateDwellBar(progress, className, topProb, active) {
+    const bar   = document.getElementById('dwellBar');
+    const label = document.getElementById('dwellLabel');
+    if (!bar || !label) return;
+
+    if (!active || progress === 0) {
+        bar.style.width      = '0%';
+        bar.style.boxShadow  = 'none';
+        label.textContent    = '';
+        return;
+    }
+
+    const pct        = (progress * 100).toFixed(0);
+    const targetMs   = getAdaptiveDwellMs(topProb);
+    const remaining  = Math.max(0, ((1 - progress) * targetMs / 1000)).toFixed(1);
+
+    // Color shifts from yellow → green as it fills
+    const hue        = Math.round(40 + progress * 80); // 40° (yellow) → 120° (green)
+    const color      = `hsl(${hue}, 100%, 55%)`;
+
+    bar.style.width      = pct + '%';
+    bar.style.background = color;
+    bar.style.boxShadow  = `0 0 8px ${color}`;
+    bar.style.transition = progress < 0.05 ? 'none' : 'width 0.1s ease-out, background 0.2s';
+
+    label.textContent    = progress >= 1
+        ? `✓ ${className}`
+        : `${className}  ${remaining}s`;
+    label.style.color    = progress >= 1 ? 'var(--green)' : color;
+}
+
+/**
+ * Update stillness state — unchanged from before
+ */
+function getLandmarkVelocity(prev, curr) {
+    if (!prev || !curr || prev.length !== curr.length) return 1;
+    let total = 0;
+    for (let i = 0; i < curr.length; i++) {
+        total += Math.abs(curr[i].x - prev[i].x) + Math.abs(curr[i].y - prev[i].y);
+    }
+    return total / curr.length;
+}
+
+function updateStillness(landmarks) {
+    if (!landmarks) {
+        prevHandLandmarks = null;
+        stillFrameCount   = 0;
+        isHandStill       = false;
+        return false;
+    }
+    const velocity    = getLandmarkVelocity(prevHandLandmarks, landmarks);
+    prevHandLandmarks = landmarks.map(lm => ({ x: lm.x, y: lm.y }));
+
+    if (velocity < STILLNESS_THRESHOLD) {
+        stillFrameCount = Math.min(stillFrameCount + 1, STILLNESS_FRAMES);
+    } else {
+        stillFrameCount = 0;
+        isHandStill     = false;
+        return false;
+    }
+    isHandStill = stillFrameCount >= STILLNESS_FRAMES;
+    return isHandStill;
+}
+
+// ================= FACE MESH =================
+
+function drawFaceMesh(ctx, landmarks) {
+    if (!landmarks) return;
+    const w = canvas.width, h = canvas.height;
+    ctx.save();
+
+    // --- Batch all mesh dots in ONE path — avoids 936 individual arc calls ---
+    ctx.beginPath();
+    landmarks.forEach(p => {
+        ctx.moveTo(p.x * w + 0.85, p.y * h);
+        ctx.arc(p.x * w, p.y * h, 0.85, 0, Math.PI * 2);
+    });
+    ctx.fillStyle = "rgba(200, 170, 255, 0.55)";
+    ctx.fill();
+
+    // --- Face contour: single glow pass (removed expensive double-stroke) ---
+    const contour = [[10,338],[338,297],[297,332],[332,284],[284,251],[251,389],[389,356],[356,454],[454,323],[323,361],[361,288],[288,397],[397,365],[365,379],[379,378],[378,400],[400,377],[377,152],[152,148],[148,176],[176,149],[149,150],[150,136],[136,172],[172,58],[58,132],[132,93],[93,234],[234,127],[127,162],[162,21],[21,54],[54,103],[103,67],[67,109],[109,10]];
+
+    ctx.beginPath();
+    ctx.moveTo(landmarks[10].x * w, landmarks[10].y * h);
+    contour.forEach(([_, i]) => {
+        const p = landmarks[i];
+        ctx.lineTo(p.x * w, p.y * h);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = "rgba(190, 140, 255, 0.65)";
+    ctx.lineWidth   = 1.8;
+    ctx.lineJoin    = "round";
+    ctx.shadowColor = "rgba(160, 100, 255, 0.5)";
+    ctx.shadowBlur  = 8;
+    ctx.stroke();
+
+    // --- Accent keypoints only (6 points, no shadow loop) ---
+    ctx.shadowBlur = 0;
+    const accentIdx = [33, 263, 1, 61, 291, 199];
+    ctx.beginPath();
+    accentIdx.forEach(i => {
+        if (!landmarks[i]) return;
+        ctx.moveTo(landmarks[i].x * w + 3, landmarks[i].y * h);
+        ctx.arc(landmarks[i].x * w, landmarks[i].y * h, 3, 0, Math.PI * 2);
+    });
+    ctx.strokeStyle = "rgba(200, 160, 255, 0.85)";
+    ctx.lineWidth   = 1.2;
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+// ================= MEDIAPIPE =================
+
+function initHolistic(){
+    if (typeof Holistic === 'undefined') {
+        log("MediaPipe not loaded!", "error");
+        return null;
+    }
+
+    const h = new Holistic({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+    });
+
+    h.setOptions({
+        modelComplexity: 0,
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+
+    h.onResults((results) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        isMoving = false;
+        useFullFrame = false;
+
+        if (results.faceLandmarks) drawFaceMesh(ctx, smoothFaceLandmarks(results.faceLandmarks));
+        
+        if (results.poseLandmarks) {
+            const pose = smoothPoseLandmarks(results.poseLandmarks);
+            const W = canvas.width, H = canvas.height;
+
+            // Arms: [shoulder, elbow, wrist] — left and right
+            const arms = [
+                [pose[11], pose[13], pose[15]],
+                [pose[12], pose[14], pose[16]]
+            ];
+
+            ctx.save();
+
+            arms.forEach(([shoulder, elbow, wrist]) => {
+                if (!shoulder || !elbow || !wrist) return;
+
+                const pts = [
+                    { x: shoulder.x * W, y: shoulder.y * H, v: shoulder.visibility || 0 },
+                    { x: elbow.x   * W, y: elbow.y   * H, v: elbow.visibility    || 0 },
+                    { x: wrist.x   * W, y: wrist.y   * H, v: wrist.visibility    || 0 }
+                ];
+
+                // ── Bone segments: tapered gradient lines ──
+                for (let i = 0; i < pts.length - 1; i++) {
+                    const a = pts[i], b = pts[i + 1];
+                    const vis = Math.min(a.v, b.v);
+                    if (vis < 0.2) continue;
+
+                    const alpha = vis * 0.68; // transparent — max ~0.68
+
+                    // Gradient along segment: cyan → ice-blue → violet
+                    const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+                    grad.addColorStop(0,   `rgba(0, 220, 255, ${alpha})`);
+                    grad.addColorStop(0.5, `rgba(120, 180, 255, ${(alpha * 0.75).toFixed(2)})`);
+                    grad.addColorStop(1,   `rgba(180, 140, 255, ${(alpha * 0.5).toFixed(2)})`);
+
+                    // Soft outer glow pass
+                    ctx.beginPath();
+                    ctx.moveTo(a.x, a.y);
+                    ctx.lineTo(b.x, b.y);
+                    ctx.strokeStyle = `rgba(0, 200, 255, ${(alpha * 0.22).toFixed(2)})`;
+                    ctx.lineWidth   = 11;
+                    ctx.lineCap     = 'round';
+                    ctx.shadowColor = `rgba(0, 200, 255, 0.4)`;
+                    ctx.shadowBlur  = 16;
+                    ctx.stroke();
+
+                    // Inner gradient line — tapered
+                    ctx.beginPath();
+                    ctx.moveTo(a.x, a.y);
+                    ctx.lineTo(b.x, b.y);
+                    ctx.strokeStyle = grad;
+                    ctx.lineWidth   = i === 0 ? 5 : 3.5;
+                    ctx.shadowBlur  = 0;
+                    ctx.stroke();
+                }
+
+                // ── Joint rings: elbow (cyan) and wrist (violet) ──
+                [
+                    { pt: pts[1], r: 6,   col: '0, 220, 255'   },  // elbow
+                    { pt: pts[2], r: 4.5, col: '180, 140, 255' }   // wrist
+                ].forEach(({ pt, r, col }) => {
+                    if (pt.v < 0.25) return;
+                    const alpha = pt.v * 0.82;
+
+                    // Outer halo ring
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y, r + 5, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(${col}, ${(alpha * 0.18).toFixed(2)})`;
+                    ctx.lineWidth   = 4;
+                    ctx.shadowColor = `rgba(${col}, 0.55)`;
+                    ctx.shadowBlur  = 14;
+                    ctx.stroke();
+
+                    // Radial gradient fill — bright centre, transparent edge
+                    const rg = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, r);
+                    rg.addColorStop(0,   `rgba(${col}, ${(alpha * 0.5).toFixed(2)})`);
+                    rg.addColorStop(0.55,`rgba(${col}, ${(alpha * 0.25).toFixed(2)})`);
+                    rg.addColorStop(1,   `rgba(${col}, 0.00)`);
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+                    ctx.fillStyle  = rg;
+                    ctx.shadowBlur = 0;
+                    ctx.fill();
+
+                    // Crisp ring outline
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(${col}, ${(alpha * 0.72).toFixed(2)})`;
+                    ctx.lineWidth   = 1.2;
+                    ctx.stroke();
+                });
+            });
+
+            ctx.restore();
+
+            // Use raw landmarks for motion detection (precision matters there)
+            const rawPose = results.poseLandmarks;
+            if (rawPose[16]?.visibility > 0.5) isMoving = detectMotion(rawPose[16]);
+            if (!isMoving && rawPose[15]?.visibility > 0.5) isMoving = detectMotion(rawPose[15]);
+        }
+
+        // Process both hands with tracking boxes
+        const handBoxes = processBothHands(results);
+        
+        if (handBoxes.length > 0) {
+            useFullFrame = false;
+            handAbsent = false;                      // hand is visible
+            if (isDynamicMode && !dynamicProcessing) {
+                bufferFrame();
+            }
+        } else {
+            useFullFrame = true;
+            // Hand just left the frame — unlock for next appearance
+            // but keep lastGesture so same sign on return stays suppressed
+            if (!handAbsent) {
+                handAbsent = true;
+                gestureLocked = false;
+                resetCounter = 0;
+                resetProbWindow();
+                log("Hand left frame — ready for next sign", "warning");
+            }
+        }
+
+        if (results.rightHandLandmarks) {
+            drawConnectors(ctx, results.rightHandLandmarks, HAND_CONNECTIONS, { color: "lime", lineWidth: 3 });
+            drawLandmarks(ctx, results.rightHandLandmarks, { color: "white", radius: 3 });
+        }
+        
+        if (results.leftHandLandmarks) {
+            drawConnectors(ctx, results.leftHandLandmarks, HAND_CONNECTIONS, { color: "lime", lineWidth: 3 });
+            drawLandmarks(ctx, results.leftHandLandmarks, { color: "white", radius: 3 });
+        }
+
+        // Update stillness using whichever hand is visible (right takes priority)
+        const activeLandmarks = results.rightHandLandmarks || results.leftHandLandmarks || null;
+        updateStillness(activeLandmarks);
+    });
+    
+    return h;
+}
+
+// ================= LOOPS =================
+
+function startMediaPipeLoop(){
+    async function loop(){
+        if (video.readyState >= 2 && holistic && !isProcessing) {
+            isProcessing = true;
+            try { await holistic.send({ image: video }); } 
+            catch(e) { log("Holistic error: " + e.message, "error"); }
+            isProcessing = false;
+        }
+        requestAnimationFrame(loop);
+    }
+    loop();
+}
+
+// ================= LIVE PROBABILITY BARS =================
+
+const BAR_COLORS = [
+    '#00e5ff', '#b06eff', '#39ff88', '#ffd166',
+    '#ff6b9d', '#ff9a3c', '#4fc3f7', '#a5d6a7',
+    '#ef9a9a', '#ce93d8'
+];
+
+let barColorMap = {}; // className → color, assigned once
+
+function updateProbBars(predArray) {
+    const container = document.getElementById('probBars');
+    const statusEl  = document.getElementById('probStatus');
+    if (!container || !predArray) return;
+
+    // Sort by probability descending
+    const sorted = [...predArray].sort((a, b) => b.probability - a.probability);
+    const topClass = sorted[0];
+    const pct = (topClass.probability * 100).toFixed(1);
+
+    // Status label
+    if (isHandStill) {
+        statusEl.textContent = `▲ ${topClass.className} ${pct}%`;
+        statusEl.style.color = 'var(--green)';
+    } else {
+        statusEl.textContent = 'Hand moving...';
+        statusEl.style.color = 'var(--yellow)';
+    }
+
+    // Build / update bars
+    sorted.forEach((item, idx) => {
+        // Assign a stable color per class
+        if (!barColorMap[item.className]) {
+    barColorMap[item.className] = BAR_COLORS[Object.keys(barColorMap).length % BAR_COLORS.length];
+        }
+        const color = barColorMap[item.className];
+        const pctVal = (item.probability * 100).toFixed(1);
+        const isTop  = idx === 0 && item.probability > 0.15;
+
+        let row = document.getElementById('prob-row-' + item.className);
+        if (!row) {
+            // Create row for first time
+            row = document.createElement('div');
+            row.className = 'prob-row';
+            row.id = 'prob-row-' + item.className;
+            row.innerHTML = `
+                <span class="prob-label">${item.className}</span>
+                <div class="prob-track">
+                    <div class="prob-fill" id="prob-fill-${item.className}"></div>
+                </div>
+                <span class="prob-pct" id="prob-pct-${item.className}">0%</span>
+            `;
+            container.appendChild(row);
+        }
+
+        // Remove placeholder once real rows exist
+        const placeholder = container.querySelector('.prob-placeholder');
+        if (placeholder) placeholder.remove();
+
+        // Update fill width and label
+        const fill = document.getElementById('prob-fill-' + item.className);
+        const pctLabel = document.getElementById('prob-pct-' + item.className);
+        if (fill) {
+            fill.style.width    = pctVal + '%';
+            fill.style.background = isTop
+                ? `linear-gradient(90deg, ${color}, ${color}cc)`
+                : `rgba(255,255,255,0.08)`;
+            fill.style.boxShadow = isTop ? `0 0 10px ${color}88` : 'none';
+        }
+        if (pctLabel) {
+            pctLabel.textContent = pctVal + '%';
+            pctLabel.style.color  = isTop ? color : 'var(--text-secondary)';
+        }
+
+        // Highlight top row
+        row.style.opacity = item.probability < 0.02 ? '0.35' : '1';
+    });
+}
+
+function startPrediction(){
+    let lastPred = 0;
+    async function loop(){
+        const now = Date.now();
+
+        if (!model || video.readyState < 2 || now - lastPred < 100 || isProcessing) {
+            requestAnimationFrame(loop);
+            return;
+        }
+
+        try {
+            tf.engine().startScope();
+
+            // HAND-ONLY: crop right hand first, fallback to left hand
+            // Never fall back to full frame — background/face must not influence prediction
+            const inputImage = getHandCrop(rightHandBox) || getHandCrop(leftHandBox);
+
+            if (!inputImage) {
+                // No hand visible — clear dwell, update status, skip model
+                resetDwell();
+                updateDwellBar(0, '', 0, false);
+                const statusEl = document.getElementById('probStatus');
+                if (statusEl) {
+                    statusEl.textContent = 'No hand detected';
+                    statusEl.style.color = 'var(--text-dim)';
+                }
+                if (!handAbsent) {
+                    handAbsent    = true;
+                    gestureLocked = false;
+                    resetCounter  = 0;
+                    resetProbWindow();
+                    log("Hand left frame — prediction paused", "warning");
+                }
+                lastPred = now;
+                tf.engine().endScope();
+                requestAnimationFrame(loop);
+                return;
+            }
+
+            const pred = await model.predict(inputImage);
+            tf.engine().endScope();
+
+            // Update live probability bar chart
+            updateProbBars(pred);
+
+            // Sort by probability — needed for dominance check
+            const sorted   = [...pred].sort((a, b) => b.probability - a.probability);
+            const topClass = sorted[0];
+            const topProb  = topClass.probability;
+
+            // Hand is visible and something has reasonable confidence
+            const hasSignal = topProb >= 0.45 && isDominant(sorted);
+
+            if (hasSignal) {
+                // Run adaptive dwell check
+                const { ready, progress } = checkAdaptiveDwell(topClass.className, topProb, sorted);
+
+                // Update visual progress bar
+                updateDwellBar(progress, topClass.className, topProb, true);
+
+                // Status badge
+                const statusEl = document.getElementById('probStatus');
+                if (statusEl) {
+                    const targetMs = getAdaptiveDwellMs(topProb);
+                    statusEl.textContent = `▲ ${topClass.className} ${(topProb*100).toFixed(1)}% · ${targetMs}ms`;
+                    statusEl.style.color = progress >= 1 ? 'var(--green)' : 'var(--cyan)';
+                }
+
+                if (ready && topClass.className !== lastGesture && !gestureLocked) {
+                    // ===== SENTENCE BUILDING (unchanged) =====
+                    sentence += topClass.className + " ";
+                    const words = sentence.trim().split(/\s+/);
+                    if (words.length > MAX_WORDS) {
+                        sentence = words.slice(-MAX_WORDS).join(" ") + " ";
+                    }
+
+                    output.innerText = sentence.trim();
+                    speakText(topClass.className);
+                    updatePreviewImage(topClass.className);
+
+                    const targetMs = getAdaptiveDwellMs(topProb);
+                    log(`[ADAPTIVE] ${topClass.className} (${(topProb*100).toFixed(1)}% · ${targetMs}ms dwell)`, "success");
+
+                    lastGesture   = topClass.className;
+                    gestureLocked = true;
+                    handAbsent    = false;
+                }
+
+                // Unlock when top class changes
+                if (topClass.className !== lastGesture) {
+                    gestureLocked = false;
+                    resetCounter  = 0;
+                }
+
+            } else {
+                // No confident dominant signal — clear progress bar
+                updateDwellBar(0, '', 0, false);
+                const statusEl = document.getElementById('probStatus');
+                if (statusEl) {
+                    statusEl.textContent = topProb < 0.20 ? 'No hand detected' : 'Ambiguous...';
+                    statusEl.style.color = 'var(--yellow)';
+                }
+            }
+
+            // Feed rolling window (kept available)
+            getProbabilitySmoothedGesture(pred);
+
+            lastPred = now;
+        } catch(e) {
+            log("Prediction error: " + e.message, "error");
+        }
+        requestAnimationFrame(loop);
+    }
+    loop();
+}
+
+function clearOutput(){
+    // Reset sentence
+    sentence = "";
+    output.innerText = model ? "Ready! Show hand sign" : "MediaPipe active";
+    
+    // Reset existing variables
+    lastGesture = ""; 
+    gestureLocked = false; 
+    resetCounter = 0;
+    predictionBuffer = []; 
+    motionHistory = [];
+    lastSpokenText = "";
+    handAbsent = false;
+    
+    // Reset dynamic states
+    frameBuffer = [];
+    isDynamicMode = false;
+    dynamicProcessing = false;
+    lastMotionTime = Date.now();
+    
+    // Reset probability window state
+    resetProbWindow();
+
+    // Reset adaptive dwell state
+    resetDwell();
+    prevHandLandmarks = null;
+    stillFrameCount   = 0;
+    isHandStill       = false;
+    updateDwellBar(0, '', 0, false);
+    
+    // Reset hand boxes
+    rightHandBox = null;
+    leftHandBox = null;
+    rightTargetBox = null;
+    leftTargetBox = null;
+    useFullFrame = false;
+    
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+    }
+    
+    const previewImg = document.getElementById("signPreview");
+    if (previewImg) {
+        previewImg.src = "sign-placeholder.png";
+        previewImg.style.display = 'none';
+    }
+}
+
+function clearDebug(){
+    debugPanel.innerHTML = '';
+}
+
+// ================= INIT =================
+
+async function init(){
+    try {
+        await initTF();
+        await startCamera();
+        await loadModel();
+        
+        holistic = initHolistic();
+        if (!holistic) throw new Error("MediaPipe failed");
+        startMediaPipeLoop();
+        startPrediction();
+        log("✓ System ready!", "success");
+    } catch(e) {
+        log("FATAL: " + e.message, "error");
+        output.innerText = "Error: " + e.message;
+    }
+}
+
+init();
+
+</script>
+</body>
+</html>
