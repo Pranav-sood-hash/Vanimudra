@@ -916,6 +916,41 @@ function getHandCrop(handBox) {
     return croppedCanvas;
 }
 
+let fullFrameCanvas = null;
+let fullFrameCtx = null;
+
+function getFullFrameCanvas() {
+    if (!video || video.readyState < 2) return null;
+    if (!fullFrameCanvas) {
+        fullFrameCanvas = document.createElement('canvas');
+        fullFrameCanvas.width = 224;
+        fullFrameCanvas.height = 224;
+        fullFrameCtx = fullFrameCanvas.getContext('2d');
+    }
+    fullFrameCtx.clearRect(0, 0, 224, 224);
+    fullFrameCtx.drawImage(video, 0, 0, video.videoWidth || 640, video.videoHeight || 480, 0, 0, 224, 224);
+    return fullFrameCanvas;
+}
+
+async function safePredict(inputImage) {
+    if (!model || !inputImage) return null;
+    try {
+        return await model.predict(inputImage);
+    } catch (err) {
+        log("Prediction warning: " + err.message, "warning");
+        if (err.message && err.message.toLowerCase().includes("webgl")) {
+            try {
+                await tf.setBackend('cpu');
+                return await model.predict(inputImage);
+            } catch (cpuErr) {
+                log("CPU fallback failed: " + cpuErr.message, "error");
+                return null;
+            }
+        }
+        return null;
+    }
+}
+
 // ================= STATIC vs DYNAMIC LOGIC =================
 
 function updateMotionState(isCurrentlyMoving) {
@@ -964,11 +999,16 @@ async function processDynamicGesture() {
         for (let i = 0; i < frameBuffer.length; i++) {
             tf.engine().startScope();
             
-            // Use right hand for dynamic, fallback to left, then full frame
-            let inputImage = getHandCrop(rightHandBox) || getHandCrop(leftHandBox) || video;
+            // Use right hand for dynamic, fallback to left, then full frame canvas
+            let inputImage = getHandCrop(rightHandBox) || getHandCrop(leftHandBox) || getFullFrameCanvas();
+            if (!inputImage) {
+                tf.engine().endScope();
+                continue;
+            }
             
-            const pred = await model.predict(inputImage);
+            const pred = await safePredict(inputImage);
             tf.engine().endScope();
+            if (!pred || pred.length === 0) continue;
             
             let best = pred[0];
             pred.forEach(p => { 
@@ -1150,6 +1190,9 @@ function handlePreviewError(imgEl) {
 async function initTF() {
     log("Initializing TensorFlow...");
     try {
+        if (tf.env() && tf.env().getFlags()['WEBGL_CPU_FORWARD'] !== undefined) {
+            tf.env().set('WEBGL_CPU_FORWARD', false);
+        }
         await tf.setBackend('webgl');
         log("✓ WebGL backend active", "success");
     } catch(e) {
@@ -1158,7 +1201,7 @@ async function initTF() {
             await tf.setBackend('cpu');
             log("✓ CPU backend active", "success");
         } catch(e2) {
-            throw new Error("No TF backend available");
+            log("CPU backend fallback active", "warning");
         }
     }
 }
@@ -1834,8 +1877,14 @@ function startPrediction(){
                 return;
             }
 
-            const pred = await model.predict(inputImage);
+            const pred = await safePredict(inputImage);
             tf.engine().endScope();
+
+            if (!pred || pred.length === 0) {
+                lastPred = now;
+                requestAnimationFrame(loop);
+                return;
+            }
 
             // Update live probability bar chart
             updateProbBars(pred);
